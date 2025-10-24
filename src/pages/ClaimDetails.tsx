@@ -34,14 +34,15 @@ const ClaimDetails: React.FC = () => {
               if (donorUserId && (!(c.food_listings as any)?.profiles || !(c.food_listings as any).profiles.full_name)) {
                 const { data: donorProfile } = await supabase.from('profiles').select('id,user_id,full_name,phone,email').eq('user_id', donorUserId).single();
                 if (donorProfile) {
-                  (c.food_listings as any).profiles = { ...((c.food_listings as any).profiles || {}), ...donorProfile };
+                  // donorProfile may be typed as unknown by the Supabase client; cast to an object before spreading
+                  (c.food_listings as any).profiles = { ...((c.food_listings as any).profiles || {}), ...(donorProfile as Record<string, any>) };
                 }
               }
 
               const claimantId = c.claimed_by;
               if (claimantId && !c.claimed_by_profile) {
                 const { data: claimantProfile } = await supabase.from('profiles').select('id,user_id,full_name,phone,email').eq('user_id', claimantId).single();
-                if (claimantProfile) c.claimed_by_profile = claimantProfile;
+                if (claimantProfile) c.claimed_by_profile = claimantProfile as Record<string, any>;
               }
             } catch (e) {
               // ignore enrichment errors (columns like 'email' may not exist in profiles)
