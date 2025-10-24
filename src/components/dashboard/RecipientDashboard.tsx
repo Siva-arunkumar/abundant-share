@@ -178,7 +178,7 @@ const RecipientDashboard: React.FC<RecipientDashboardProps> = ({
                       </span>
                     </div>
                     <div className="flex items-center">
-                      <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                      <Calendar className="h-5 w-5 mr-2 text-muted-foreground dark:text-white" />
                       <span>Claimed: {format(new Date(claim.claimed_at), 'MMM dd, yyyy')}</span>
                     </div>
                   </div>

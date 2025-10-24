@@ -121,3 +121,25 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* Reusable icon color utilities for dark mode */
+  .icon-white {
+    @apply dark:text-white;
+  }
+
+  /* Subtle, catchy accent for icons in dark mode (soft sky blue) */
+  .icon-accent {
+    @apply dark:text-sky-300;
+  }
+
+  /* Make native calendar/time picker icons visible in dark mode (Chromium)
+     Targets the WebKit calendar picker indicator and inverts/brightens it so
+     the glyph appears light against the dark background. Note: Firefox
+     does not support styling the native picker in the same way. */
+  .dark input[type="date"]::-webkit-calendar-picker-indicator,
+  .dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  .dark input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.6) contrast(1.1);
+  }
+}

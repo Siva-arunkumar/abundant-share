@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { Loader2, Utensils, Eye, EyeOff } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const Auth: React.FC = () => {
-  const { user, signIn, signUp, loading } = useAuth();
+  const { user, signIn, signUp, loading, sendPhoneOtp, verifyPhoneOtp, updateProfile } = useAuth();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/dashboard';
 
@@ -31,6 +31,14 @@ const Auth: React.FC = () => {
   const [showSignInPassword, setShowSignInPassword] = useState(false);
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const [showSignUpConfirm, setShowSignUpConfirm] = useState(false);
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpPhone, setOtpPhone] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [phoneVerified, setPhoneVerified] = useState(false);
+ 
 
   // Redirect if already authenticated
   if (user && !loading) {
@@ -55,7 +63,7 @@ const Auth: React.FC = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (signUpData.password !== signUpData.confirmPassword) {
       toast({
         title: "Password Mismatch",
@@ -74,6 +82,12 @@ const Auth: React.FC = () => {
       return;
     }
 
+    // If phone provided but not verified, prevent signup until verified
+    if (signUpData.phone && !phoneVerified) {
+      toast({ title: 'Phone verification required', description: 'Please verify your mobile number before creating an account.', variant: 'destructive' });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -81,8 +95,15 @@ const Auth: React.FC = () => {
         full_name: signUpData.fullName,
         phone: signUpData.phone,
       });
-      
-      // The AuthContext handles success/error toasts and navigation
+
+      // If signup succeeded and phone was verified, persist it on profile
+      if (!result?.error && signUpData.phone && phoneVerified) {
+        try {
+          await updateProfile({ phone: signUpData.phone, phone_verified: true } as any);
+        } catch (err) {
+          console.error('Failed to persist phone on profile after signup', err);
+        }
+      }
     } catch (error) {
       console.error('Sign up error:', error);
       toast({
@@ -94,6 +115,83 @@ const Auth: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const handleStartPhoneVerification = async () => {
+    if (!signUpData.phone) {
+      toast({ title: 'Phone required', description: 'Please enter a phone number first.', variant: 'destructive' });
+      return;
+    }
+    // Basic E.164 validation: must start with + and digits
+    if (!/^\+[0-9]{7,15}$/.test(signUpData.phone)) {
+      toast({ title: 'Invalid phone format', description: 'Please enter phone in E.164 format, e.g. +919876543210', variant: 'destructive' });
+      return;
+    }
+    setOtpSending(true);
+    try {
+      await sendPhoneOtp(signUpData.phone);
+      setOtpPhone(signUpData.phone);
+      setOtpRequired(true);
+      setResendCooldown(60);
+    } catch (err) {
+      console.error('Failed to send phone OTP', err);
+      // Improve error feedback
+      toast({ title: 'Failed to send OTP', description: 'Check Supabase/Twilio configuration and phone number. See console for details.', variant: 'destructive' });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpPhone) return;
+    setOtpVerifying(true);
+    try {
+      const res = await verifyPhoneOtp(otpPhone, otpCode);
+      if (res?.error) {
+        // handled inside verifyPhoneOtp with toast
+        setOtpVerifying(false);
+        return;
+      }
+      // Mark verified locally; profile will be updated after account creation
+      setPhoneVerified(true);
+      setOtpRequired(false);
+      setOtpCode('');
+      toast({ title: 'Phone verified', description: 'You can now create your account.' });
+    } catch (err) {
+      console.error('verify otp error', err);
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!otpPhone) return;
+    setOtpSending(true);
+    try {
+      await sendPhoneOtp(otpPhone);
+      // start cooldown
+      setResendCooldown(60);
+      setOtpSending(false);
+    } catch (err) {
+      console.error('resend otp error', err);
+      setOtpSending(false);
+    }
+  };
+
+  // cooldown timer for resend button
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+    const t = setInterval(() => {
+      setResendCooldown((c) => {
+        if (c <= 1) {
+          clearInterval(t);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
 
   // password visibility handlers handled via state toggles above
 
@@ -188,17 +286,54 @@ const Auth: React.FC = () => {
                 
                 <div className="space-y-2">
                   <Label htmlFor="signup-phone">Phone</Label>
-                  <Input
-                    id="signup-phone"
-                    type="tel"
-                    placeholder="+91 xxxxxxxxxx"
-                    value={signUpData.phone}
-                    onChange={(e) => setSignUpData({ ...signUpData, phone: e.target.value })}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="signup-phone"
+                      type="tel"
+                      placeholder="+91 xxxxxxxxxx"
+                      className="flex-1"
+                      value={signUpData.phone}
+                      onChange={(e) => { setSignUpData({ ...signUpData, phone: e.target.value }); setPhoneVerified(false); }}
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleStartPhoneVerification}
+                      disabled={!signUpData.phone || otpRequired || otpSending || phoneVerified}
+                    >
+                      {phoneVerified ? 'Verified' : otpSending ? 'Sending...' : 'Verify mobile number'}
+                    </Button>
+                  </div>
+                  {phoneVerified && <div className="text-sm text-green-500">Phone verified</div>}
                 </div>
                 
                 
                 <div className="space-y-2">
+                  {/* OTP row: shown above password when otpRequired */}
+                  {otpRequired && (
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-otp">Enter verification code sent to {otpPhone}</Label>
+                      <div className="flex items-center gap-2">
+                        <Input id="signup-otp" type="text" placeholder="123456" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
+                        <Button onClick={handleVerifyOtp} className="flex-none" disabled={otpVerifying}>
+                          {otpVerifying ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Verifying...
+                            </>
+                          ) : (
+                            'Verify Code'
+                          )}
+                        </Button>
+                        <Button variant="outline" onClick={handleResendOtp} disabled={otpSending || resendCooldown > 0}>
+                          {otpSending ? 'Resending...' : resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend'}
+                        </Button>
+                        <Button variant="ghost" onClick={() => { setOtpRequired(false); setOtpCode(''); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <Label htmlFor="signup-password">Password</Label>
                   <div className="relative">
                     <Input
@@ -230,16 +365,45 @@ const Auth: React.FC = () => {
                   </div>
                 </div>
                 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating Account...
-                    </>
-                  ) : (
-                    'Create Account'
-                  )}
-                </Button>
+                {!otpRequired ? (
+                  <Button type="submit" className="w-full" disabled={isLoading || (signUpData.phone && !phoneVerified)}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating Account...
+                      </>
+                    ) : (
+                      'Create Account'
+                    )}
+                  </Button>
+                ) : (
+                  <div className="space-y-2">
+                    <div>
+                      <Label htmlFor="signup-otp">Enter verification code sent to {otpPhone}</Label>
+                      <Input id="signup-otp" type="text" placeholder="123456" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button onClick={handleVerifyOtp} className="flex-1" disabled={otpVerifying}>
+                        {otpVerifying ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          'Verify Code'
+                        )}
+                      </Button>
+                      <Button variant="outline" onClick={handleResendOtp} disabled={otpSending || resendCooldown > 0}>
+                        {otpSending ? 'Resending...' : resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend'}
+                      </Button>
+                    </div>
+
+                    <Button variant="ghost" onClick={() => { setOtpRequired(false); setOtpCode(''); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </form>
             </TabsContent>
             

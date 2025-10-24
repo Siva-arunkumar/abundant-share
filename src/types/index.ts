@@ -28,6 +28,7 @@ export interface Profile {
   user_id: string;
   full_name: string;
   phone?: string;
+  phone_verified?: boolean;
   role: UserRole;
   organization_name?: string;
   address?: string;
@@ -124,4 +125,6 @@ export interface AuthContextType {
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   signInWithOtp: (email: string) => Promise<any>;
   verifyOtp: (email: string, token: string) => Promise<any>;
+  sendPhoneOtp: (phone: string) => Promise<any>;
+  verifyPhoneOtp: (phone: string, token: string) => Promise<any>;
 }

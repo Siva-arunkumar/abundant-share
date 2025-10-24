@@ -253,6 +253,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Phone OTP (SMS) helpers
+  const sendPhoneOtp = async (phone: string) => {
+    try {
+      const viteUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!viteUrl) {
+        // Local dev fallback: store a predictable OTP in localStorage (only for DEV)
+        const code = '123456';
+        const key = `dev_otp_${phone}`;
+        localStorage.setItem(key, JSON.stringify({ code, expiresAt: Date.now() + 5 * 60 * 1000 }));
+        toast({ title: 'Dev OTP', description: `Code: ${code}` });
+        return { data: { ok: true } };
+      }
+
+      const { data, error } = await supabase.auth.signInWithOtp({ phone });
+      console.debug('supabase.signInWithOtp response', { data, error });
+      if (error) {
+        toast({ title: 'Failed to send OTP', description: error.message, variant: 'destructive' });
+        return { error };
+      }
+
+      // Some Supabase setups don't return explicit send status; inform user and log
+      toast({ title: 'OTP Sent', description: 'If you do not receive an SMS, check your Supabase/Twilio configuration and Twilio logs.' });
+      return { data };
+    } catch (err) {
+      console.error('sendPhoneOtp error', err);
+      return { error: err };
+    }
+  };
+
+  const verifyPhoneOtp = async (phone: string, token: string) => {
+    try {
+      const viteUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!viteUrl) {
+        const key = `dev_otp_${phone}`;
+        const recRaw = localStorage.getItem(key);
+        if (!recRaw) return { error: { message: 'No OTP requested' } };
+        const rec = JSON.parse(recRaw);
+        if (Date.now() > rec.expiresAt) return { error: { message: 'Code expired' } };
+        if (rec.code !== token) return { error: { message: 'Invalid code' } };
+        // mark verified in local users store: handled by caller (Auth UI)
+        toast({ title: 'Phone verified (dev)' });
+        return { data: { ok: true } };
+      }
+
+      const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+      if (error) {
+        toast({ title: 'Verification Failed', description: error.message, variant: 'destructive' });
+        return { error };
+      }
+
+      toast({ title: 'Phone verified', description: 'Your phone number has been verified.' });
+      return { data };
+    } catch (err) {
+      console.error('verifyPhoneOtp error', err);
+      return { error: err };
+    }
+  };
+
   const signUp = async (email: string, password: string, userData: Partial<Profile>) => {
     try {
       // Dev fallback for signUp: auto-create the default dev user/profile
@@ -438,6 +496,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateProfile,
     signInWithOtp,
     verifyOtp,
+    sendPhoneOtp,
+    verifyPhoneOtp,
   };
 
   return (

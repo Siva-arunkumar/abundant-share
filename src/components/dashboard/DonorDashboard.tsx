@@ -184,7 +184,7 @@ const DonorDashboard: React.FC<DonorDashboardProps> = ({
                       <span>{listing.pickup_location}</span>
                     </div>
                     <div className="flex items-center">
-                      <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                      <Calendar className="h-5 w-5 mr-2 text-muted-foreground dark:text-white" />
                       <span>Expires: {format(new Date(listing.expiry_date), 'MMM dd, yyyy')}</span>
                     </div>
                   </div>
