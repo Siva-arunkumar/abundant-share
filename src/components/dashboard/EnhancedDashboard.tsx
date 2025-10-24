@@ -599,6 +599,11 @@ const EnhancedDashboard: React.FC = () => {
                             </Button>
                           </div>
                         )}
+                        <div className="flex justify-end mt-2">
+                          <Button asChild size="sm" variant="outline">
+                            <Link to={`/dashboard/claim/${encodeURIComponent(String(claim.id))}`}>View Details</Link>
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   </motion.div>

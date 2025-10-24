@@ -20,7 +20,8 @@ import { ArrowLeft, Upload } from 'lucide-react';
 const formSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
-  quantity: z.string().min(1, 'Quantity is required'),
+  // Quantity is optional now — allow empty string
+  quantity: z.string().optional(),
   category: z.string().min(1, 'Category is required'),
   expiry_date: z.string().min(1, 'Expiry date is required'),
   pickup_time_start: z.string().min(1, 'Pickup start time is required'),
@@ -30,14 +31,14 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+// Use values that match the DB enum (FoodCategory)
 const FOOD_CATEGORIES: { value: string; label: string }[] = [
-  { value: 'vegetables', label: 'Vegetables' },
-  { value: 'fruits', label: 'Fruits' },
-  { value: 'grains', label: 'Grains & Cereals' },
+  { value: 'veg', label: 'Vegetables' },
+  { value: 'non_veg', label: 'Meat & Fish' },
   { value: 'dairy', label: 'Dairy' },
-  { value: 'meat', label: 'Meat & Fish' },
   { value: 'bakery', label: 'Bakery' },
-  { value: 'prepared_food', label: 'Prepared Food' },
+  { value: 'packaged', label: 'Packaged Goods' },
+  { value: 'cooked', label: 'Prepared / Cooked Food' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -84,9 +85,10 @@ const CreateListing: React.FC = () => {
         const { data: localData, error } = await localListings.localCreateListing({
           donor_id: user.id,
           title: data.title,
+          name: data.title,
           description: data.description,
-          quantity: data.quantity,
-          category: data.category as any,
+          quantity: (data.quantity || '') as string,
+          category: (data.category as FoodCategory) || 'other',
           expiry_date: expiryDateTime,
           pickup_time_start: pickupStart,
           pickup_time_end: pickupEnd,
@@ -112,16 +114,17 @@ const CreateListing: React.FC = () => {
         const { error } = await supabase.from('food_listings').insert({
           donor_id: user.id,
           title: data.title,
+          name: data.title,
           description: data.description,
-          quantity: data.quantity,
-          category: data.category as Database['public']['Enums']['food_category'],
+          quantity: (data.quantity || '') as string,
+          category: (data.category as Database['public']['Enums']['food_category']) || 'other',
           expiry_date: expiryDateTime,
           pickup_time_start: pickupStart,
           pickup_time_end: pickupEnd,
           pickup_location: data.pickup_location,
           status: 'available',
           images: [], // Will add file upload later
-        } as any);
+        });
 
         if (error) throw error;
       } catch (supabaseError) {
@@ -129,9 +132,10 @@ const CreateListing: React.FC = () => {
         const { data: localData, error } = await localListings.localCreateListing({
           donor_id: user.id,
           title: data.title,
+          name: data.title,
           description: data.description,
           quantity: data.quantity,
-          category: data.category as any,
+          category: (data.category as FoodCategory) || 'other',
           expiry_date: expiryDateTime,
           pickup_time_start: pickupStart,
           pickup_time_end: pickupEnd,
@@ -233,6 +237,7 @@ const CreateListing: React.FC = () => {
                     <FormItem>
                       <FormLabel>Quantity</FormLabel>
                       <FormControl>
+                        {/* Quantity is optional */}
                         <Input placeholder="e.g., 5 kg, 20 servings" {...field} />
                       </FormControl>
                       <FormMessage />

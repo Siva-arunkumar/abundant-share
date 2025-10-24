@@ -19,6 +19,7 @@ import Contact from "./pages/Contact";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import CreateListing from "./pages/CreateListing";
+import ClaimDetails from "./pages/ClaimDetails";
 import NotFound from "./pages/NotFound";
 import DevDebug from "./pages/DevDebug";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -68,6 +69,11 @@ const App = () => (
                   <Route path="/create-listing" element={
                     <ProtectedRoute>
                       <CreateListing />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/dashboard/claim/:id" element={
+                    <ProtectedRoute>
+                      <ClaimDetails />
                     </ProtectedRoute>
                   } />
                   {import.meta.env.DEV && (

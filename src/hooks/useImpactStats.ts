@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import localListings from '@/lib/localListings';
 
@@ -24,11 +24,10 @@ export const useImpactStats = () => {
 
     const fetchImpact = async () => {
       try {
-        const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-        // Local/dev fallback: when Supabase isn't configured or when
-        // the dev user is used, compute a simple impact summary from
-        // local listings and claims so the dashboard can render.
-        if (!viteUrl || String(user.id).startsWith('dev-')) {
+  // Local/dev fallback: when Supabase isn't configured or when
+  // the dev user is used, compute a simple impact summary from
+  // local listings and claims so the dashboard can render.
+  if (!isSupabaseConfigured || String(user.id).startsWith('dev-')) {
           try {
             const all = await localListings.localFetchListings();
             const userListings = all.filter(l => l.donor_id === user.id);

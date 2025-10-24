@@ -1,5 +1,6 @@
 import { FoodListing, Profile } from '@/types';
 import localAuth from '@/lib/localAuth';
+import { isSupabaseConfigured } from '@/integrations/supabase/client';
 
 const STORAGE_KEY = 'dev_food_listings_v1';
 const CLAIMS_KEY = 'dev_food_claims_v1';
@@ -273,9 +274,8 @@ export default {
 try {
   if (typeof window !== 'undefined' && window.localStorage) {
     const already = window.localStorage.getItem('dev_autoseeded_v1');
-    const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-    // Only auto-seed when Supabase is not configured or when developing locally
-    if (!already && (!viteUrl || window.location.hostname === 'localhost')) {
+      // Only auto-seed when Supabase is not configured or when developing locally
+    if (!already && (!isSupabaseConfigured || window.location.hostname === 'localhost')) {
       // Ensure the base seed exists
       seedIfEmpty();
       // Create one explicit auto-seed listing for the dev user

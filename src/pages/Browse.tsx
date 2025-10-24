@@ -4,13 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
 import localListings from '@/lib/localListings';
 import { useAuth } from '@/contexts/AuthContext';
 import { FoodListing, FoodCategory } from '@/types';
 import { MapPin, Clock, Package, Search, Filter, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
+import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import localNotifications from '@/lib/localNotifications';
 import { motion } from 'framer-motion';
@@ -58,8 +60,7 @@ const Browse: React.FC = () => {
   const fetchListings = async () => {
     setLoading(true);
     try {
-      const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!viteUrl) {
+      if (!isSupabaseConfigured) {
         const data = await localListings.localFetchListings();
         setListings(data as any[]);
         return;
@@ -150,21 +151,40 @@ const Browse: React.FC = () => {
 
     // local fallback helper
     const tryLocalClaim = async () => {
-      const res = await localListings.localCreateClaim({ listing_id: listingId, claimed_by: user.id, quantity_requested: quantity });
-      if (res.error) throw res.error;
-      toast({ title: 'Successfully claimed!', description: 'You have successfully claimed this food donation. Check your dashboard for pickup details.' });
-      fetchListings();
-    };
+        const res = await localListings.localCreateClaim({ listing_id: listingId, claimed_by: user.id, quantity_requested: quantity });
+        if (res.error) throw res.error;
+        // Use a plain anchor in the toast action (renders outside Router) so it doesn't require React Router context
+        toast({
+          title: 'Successfully claimed!',
+          description: 'You have successfully claimed this food donation. Check your dashboard for pickup details.',
+          action: (
+            <ToastAction asChild altText="View claim details">
+              <a href={`/dashboard/claim/${encodeURIComponent((res.data as any).id)}`}>View Details</a>
+            </ToastAction>
+          )
+        });
+        fetchListings();
+        // navigate programmatically as well so the user is taken straight to details
+        navigate(`/dashboard/claim/${encodeURIComponent((res.data as any).id)}`);
+      };
 
-      try {
-      const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!viteUrl) {
+    try {
+    if (!isSupabaseConfigured) {
           const res = await localListings.localCreateClaim({ listing_id: listingId, claimed_by: user.id, quantity_requested: quantity });
           if (res.error) throw res.error;
           // create local notification for donor
           try { await localNotifications.createLocalNotification({ user_id: (res.data as any).food_listings?.donor_id || '', title: 'Your donation was claimed', message: `Your donation "${(res.data as any).food_listings?.title || ''}" was claimed by a recipient.`, food_listing_id: listingId }); } catch {}
-          // redirect to dashboard claims with claimId so recipient sees details
-          navigate(`/dashboard?tab=claims&claimId=${encodeURIComponent((res.data as any).id)}`);
+          // show toast with link and redirect to dashboard claim page so recipient sees details
+          toast({
+            title: 'Successfully claimed!',
+            description: 'You have successfully claimed this food donation. Check your dashboard for pickup details.',
+            action: (
+              <ToastAction asChild altText="View claim details">
+                <a href={`/dashboard/claim/${encodeURIComponent((res.data as any).id)}`}>View Details</a>
+              </ToastAction>
+            )
+          });
+          navigate(`/dashboard/claim/${encodeURIComponent((res.data as any).id)}`);
           return;
       }
 
@@ -205,7 +225,7 @@ const Browse: React.FC = () => {
           const { data: claimRows } = await supabase.from('claims').select('*').eq('claimed_by', user.id).eq('listing_id', listingId).order('claimed_at', { ascending: false }).limit(1);
           if (claimRows && claimRows.length > 0) {
             const claimId = claimRows[0].id;
-            navigate(`/dashboard?tab=claims&claimId=${encodeURIComponent(claimId)}`);
+            navigate(`/dashboard/claim/${encodeURIComponent(claimId)}`);
             return;
           }
         } catch (e) { /* ignore */ }

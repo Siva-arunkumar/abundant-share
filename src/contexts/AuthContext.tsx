@@ -28,40 +28,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.debug('onAuthStateChange', { event, session });
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
           // Fetch user profile
           setTimeout(async () => {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('user_id', session.user.id)
-              .single();
-            
-            if (profileData) {
-              setProfile(profileData as Profile);
-              // Redirect admins to admin dashboard
-              if (profileData.role === 'admin') {
-                window.location.href = '/admin';
+            try {
+              const { data: profileData, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('user_id', session.user.id)
+                .single();
+
+              if (error) {
+                console.error('Error fetching profile on auth change', error);
               }
+
+              console.debug('profile fetch result on auth change', { profileData });
+
+              if (profileData) {
+                setProfile(profileData as Profile);
+                // Redirect admins to admin dashboard
+                if (profileData.role === 'admin') {
+                  window.location.href = '/admin';
+                }
+              } else if (session.user) {
+                // If no profile exists for this authenticated user, create a minimal one so
+                // the UI (profile page, role checks) has something to render and the user
+                // can update it. This avoids leaving the profile null and the page stuck
+                // on "Loading profile...".
+                try {
+                  const defaultProfile = {
+                    user_id: session.user.id,
+                    full_name: session.user.email ?? '',
+                    role: 'user',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  } as any;
+                  const { data: inserted, error: insertErr } = await supabase.from('profiles').insert(defaultProfile).select().single();
+                  if (insertErr) {
+                    console.warn('Failed to create default profile for user', insertErr);
+                  } else if (inserted) {
+                    setProfile(inserted as Profile);
+                  }
+                } catch (e) {
+                  console.error('Exception creating default profile', e);
+                }
+              }
+            } catch (e) {
+              console.error('Exception fetching profile on auth change', e);
             }
           }, 0);
         } else {
           setProfile(null);
         }
-        
+
         setLoading(false);
       }
     );
 
     // Check for existing session
-    const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-    if (!viteUrl) {
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+    if (!supabaseConfigured) {
+      console.debug('VITE_SUPABASE_URL not set — using local dev auth fallback');
       // Attempt to initialize from localAuth sessions (no async/await here to avoid parser issues)
       try {
         const sessionsRaw = localStorage.getItem('dev_sessions_v1');
+        console.debug('local dev sessions raw', sessionsRaw);
         if (sessionsRaw) {
           const sessions = JSON.parse(sessionsRaw || '{}');
           const userIds = Object.keys(sessions);
@@ -70,24 +107,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               // Read local users directly from localStorage to avoid async calls during init
               const usersRaw = localStorage.getItem('dev_users_v1');
+              console.debug('local dev users raw', usersRaw);
               const users = usersRaw ? JSON.parse(usersRaw || '[]') : [];
               const found = users.find((u: any) => u.id === userId);
               const profile = found ? found.profile : null;
               setUser({ id: userId, email: (profile && profile.email) || '' } as any);
               setSession({ user: { id: userId } } as any);
               setProfile(profile as any);
+              console.debug('Initialized local dev profile', { userId, profile });
             } catch (e) {
               // ignore
+              console.error('Error initializing local dev session', e);
             }
           }
         }
       } catch (e) {
-        // ignore
+        console.error('Error reading local dev sessions', e);
       } finally {
         setLoading(false);
       }
     } else {
+      console.debug('Supabase configured — fetching Supabase session');
       supabase.auth.getSession().then(({ data: { session } }) => {
+        console.debug('supabase.auth.getSession result', session);
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -97,9 +139,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .select('*')
             .eq('user_id', session.user.id)
             .single()
-            .then(({ data: profileData }) => {
+            .then(async ({ data: profileData, error }) => {
+              console.debug('profile fetch result on init', { profileData, error });
               if (profileData) {
                 setProfile(profileData as Profile);
+              } else if (session.user) {
+                // create minimal profile if missing (best-effort)
+                try {
+                  const defaultProfile = {
+                    user_id: session.user.id,
+                    full_name: session.user.email ?? '',
+                    role: 'user',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  } as any;
+                  const { data: inserted, error: insertErr } = await supabase.from('profiles').insert(defaultProfile).select().single();
+                  if (insertErr) {
+                    console.warn('Failed to create default profile on init', insertErr);
+                  } else if (inserted) {
+                    setProfile(inserted as Profile);
+                  }
+                } catch (e) {
+                  console.error('Exception creating default profile on init', e);
+                }
               }
               setLoading(false);
             });
@@ -107,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLoading(false);
         }
       });
-    }
+  }
 
     return () => subscription.unsubscribe();
   }, []);
@@ -151,8 +213,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast({ title: 'Signed in (dev)', description: "You're signed in using the local dev user." });
       return { data: { user: fakeUser, session: fakeSession } };
     }
-    const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-    if (!viteUrl) {
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+  if (!supabaseConfigured) {
       // local auth
       const res = await localAuth.localSignIn(normalizedEmail, normalizedPassword);
       if (res.error) {
@@ -256,9 +320,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Phone OTP (SMS) helpers
   const sendPhoneOtp = async (phone: string) => {
     try {
-      const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!viteUrl) {
-        // Local dev fallback: store a predictable OTP in localStorage (only for DEV)
+  const provider = import.meta.env.VITE_SUPABASE_SMS_PROVIDER;
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+
+  // Local dev fallback
+  if (!supabaseConfigured) {
         const code = '123456';
         const key = `dev_otp_${phone}`;
         localStorage.setItem(key, JSON.stringify({ code, expiresAt: Date.now() + 5 * 60 * 1000 }));
@@ -266,14 +334,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { data: { ok: true } };
       }
 
+      // If configured, call direct Twilio edge function
+      if (provider === 'twilio-direct') {
+        const res = await fetch('/functions/v1/twilio-send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone }),
+        });
+        const body = await res.json();
+        console.debug('twilio-send-otp resp', body);
+        if (!res.ok) {
+          toast({ title: 'Failed to send OTP', description: body?.error || 'Unknown error', variant: 'destructive' });
+          return { error: body };
+        }
+        toast({ title: 'OTP Sent', description: 'Check your phone for the verification code.' });
+        return { data: body };
+      }
+
+      // Default: Supabase-managed SMS
       const { data, error } = await supabase.auth.signInWithOtp({ phone });
       console.debug('supabase.signInWithOtp response', { data, error });
       if (error) {
         toast({ title: 'Failed to send OTP', description: error.message, variant: 'destructive' });
         return { error };
       }
-
-      // Some Supabase setups don't return explicit send status; inform user and log
       toast({ title: 'OTP Sent', description: 'If you do not receive an SMS, check your Supabase/Twilio configuration and Twilio logs.' });
       return { data };
     } catch (err) {
@@ -284,17 +368,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const verifyPhoneOtp = async (phone: string, token: string) => {
     try {
-      const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!viteUrl) {
+  const provider = import.meta.env.VITE_SUPABASE_SMS_PROVIDER;
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+  if (!supabaseConfigured) {
         const key = `dev_otp_${phone}`;
         const recRaw = localStorage.getItem(key);
         if (!recRaw) return { error: { message: 'No OTP requested' } };
         const rec = JSON.parse(recRaw);
         if (Date.now() > rec.expiresAt) return { error: { message: 'Code expired' } };
         if (rec.code !== token) return { error: { message: 'Invalid code' } };
-        // mark verified in local users store: handled by caller (Auth UI)
         toast({ title: 'Phone verified (dev)' });
         return { data: { ok: true } };
+      }
+
+      if (provider === 'twilio-direct') {
+        const res = await fetch('/functions/v1/twilio-verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, token }),
+        });
+        const body = await res.json();
+        console.debug('twilio-verify-otp resp', body);
+        if (!res.ok) {
+          toast({ title: 'Verification Failed', description: body?.error || 'Unknown error', variant: 'destructive' });
+          return { error: body };
+        }
+        toast({ title: 'Phone verified', description: 'Your phone number has been verified.' });
+        return { data: body };
       }
 
       const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
@@ -302,7 +404,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast({ title: 'Verification Failed', description: error.message, variant: 'destructive' });
         return { error };
       }
-
       toast({ title: 'Phone verified', description: 'Your phone number has been verified.' });
       return { data };
     } catch (err) {
@@ -413,9 +514,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
-      const viteUrl = import.meta.env.VITE_SUPABASE_URL;
-      // Local mode: clear local session via localAuth
-      if (!viteUrl && user && (user as any).id) {
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+  // Local mode: clear local session via localAuth
+  if (!supabaseConfigured && user && (user as any).id) {
         await localAuth.localSignOut((user as any).id);
         setUser(null);
         setSession(null);

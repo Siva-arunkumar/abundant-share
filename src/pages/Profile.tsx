@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,10 @@ import { User, Save, Upload } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const Profile: React.FC = () => {
-  const { profile, updateProfile } = useAuth();
+  const { profile, updateProfile, sendPhoneOtp, verifyPhoneOtp } = useAuth();
+  useEffect(() => {
+    console.debug('Profile page profile:', profile);
+  }, [profile]);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<ProfileType>>({
     full_name: profile?.full_name || '',
@@ -22,6 +25,14 @@ const Profile: React.FC = () => {
     state: profile?.state || '',
     postal_code: profile?.postal_code || '',
   });
+
+  // Phone verification state
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [phoneVerified, setPhoneVerified] = useState(Boolean(profile?.phone_verified));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,9 +46,13 @@ const Profile: React.FC = () => {
       setLoading(false);
     }
   };
-
+ 
   const handleInputChange = (field: keyof ProfileType, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'phone') {
+      // mark unverified when phone number is changed
+      setPhoneVerified(false);
+    }
   };
 
   if (!profile) {
@@ -105,14 +120,95 @@ const Profile: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    placeholder="+1 (555) 123-4567"
-                  />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="phone"
+                        value={formData.phone}
+                        onChange={(e) => handleInputChange('phone', e.target.value)}
+                        placeholder="+1 (555) 123-4567"
+                      />
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          if (!formData.phone) return toast({ title: 'Phone required', description: 'Enter a phone number first', variant: 'destructive' });
+                          // basic E.164-ish check
+                          if (!/^\+[0-9]{7,15}$/.test(String(formData.phone))) return toast({ title: 'Invalid phone', description: 'Use E.164 format like +919876543210', variant: 'destructive' });
+                          setOtpSending(true);
+                          try {
+                            await sendPhoneOtp(String(formData.phone));
+                            setOtpRequired(true);
+                            setResendCooldown(60);
+                            toast({ title: 'OTP Sent', description: 'Check your phone for the verification code.' });
+                          } catch (err) {
+                            console.error('sendPhoneOtp error', err);
+                            toast({ title: 'Failed', description: 'Unable to send OTP. See console.', variant: 'destructive' });
+                          } finally {
+                            setOtpSending(false);
+                          }
+                        }}
+                        disabled={otpSending || phoneVerified}
+                      >
+                        {phoneVerified ? 'Verified' : otpSending ? 'Sending...' : 'Verify'}
+                      </Button>
+                    </div>
+                    {phoneVerified && <div className="text-sm text-green-500">Phone verified</div>}
                 </div>
               </div>
+
+              {/* OTP verification UI */}
+              {otpRequired && (
+                <div className="space-y-2">
+                  <Label htmlFor="otp">Enter verification code sent to {formData.phone}</Label>
+                  <div className="flex items-center gap-2">
+                    <Input id="otp" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} placeholder="123456" />
+                    <Button onClick={async () => {
+                      if (!formData.phone) return;
+                      setOtpVerifying(true);
+                      try {
+                        const res = await verifyPhoneOtp(String(formData.phone), otpCode);
+                        if (res?.error) {
+                          // verifyPhoneOtp shows toasts
+                          return;
+                        }
+                        // persist verified phone
+                        try {
+                          await updateProfile({ phone: String(formData.phone), phone_verified: true });
+                          setPhoneVerified(true);
+                          setOtpRequired(false);
+                          setOtpCode('');
+                          toast({ title: 'Phone verified', description: 'Your phone number has been verified.' });
+                        } catch (err) {
+                          console.error('Error persisting verified phone', err);
+                        }
+                      } catch (err) {
+                        console.error('verifyPhoneOtp error', err);
+                      } finally {
+                        setOtpVerifying(false);
+                      }
+                    }} disabled={otpVerifying}>
+                      {otpVerifying ? 'Verifying...' : 'Verify Code'}
+                    </Button>
+                    <Button variant="outline" onClick={async () => {
+                      if (!formData.phone) return;
+                      setOtpSending(true);
+                      try {
+                        await sendPhoneOtp(String(formData.phone));
+                        setResendCooldown(60);
+                        toast({ title: 'Resent', description: 'OTP resent to your phone.' });
+                      } catch (err) {
+                        console.error('resend error', err);
+                      } finally {
+                        setOtpSending(false);
+                      }
+                    }} disabled={otpSending || resendCooldown > 0}>
+                      {otpSending ? 'Resending...' : resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend'}
+                    </Button>
+                    <Button variant="ghost" onClick={() => { setOtpRequired(false); setOtpCode(''); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <div className="space-y-2">
