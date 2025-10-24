@@ -1,0 +1,131 @@
+{
+  "nav": {
+    "home": "Home",
+    "browse": "Browse Food",
+    "dashboard": "Dashboard",
+    "profile": "Profile",
+    "notifications": "Notifications",
+    "admin": "Admin",
+    "about": "About",
+    "contact": "Contact",
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "signUp": "Sign Up"
+  },
+  "hero": {
+    "title": "Reducing Food Waste, Fighting Hunger",
+    "subtitle": "Connect food donors with NGOs and communities in need. Every meal shared makes a difference in someone's life and helps protect our planet.",
+    "donateFood": "Donate Food",
+    "findFood": "Find Food",
+    "getStarted": "Get Started",
+    "learnMore": "Learn More"
+  },
+  "stats": {
+    "mealsServed": "Meals Served",
+    "foodSaved": "Food Saved",
+    "ngosOnboarded": "NGOs Onboarded",
+    "ourImpact": "Our Impact"
+  },
+  "howItWorks": {
+    "title": "How It Works",
+    "donate": {
+      "title": "Donate",
+      "description": "List your surplus food with details about quantity, location, and pickup times."
+    },
+    "connect": {
+      "title": "Connect", 
+      "description": "NGOs and communities browse available food and claim what they need."
+    },
+    "share": {
+      "title": "Share",
+      "description": "Coordinate pickup times and complete the food sharing process."
+    }
+  },
+  "features": {
+    "title": "Platform Features",
+    "realTime": {
+      "title": "Real-time Updates",
+      "description": "Get instant notifications when food is available or claimed in your area."
+    },
+    "locationBased": {
+      "title": "Location-based",
+      "description": "Find food donations near you and optimize pickup routes for efficiency."
+    },
+    "communityDriven": {
+      "title": "Community Driven", 
+      "description": "Join a network of caring individuals and organizations making a difference."
+    }
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "email": "Email",
+    "password": "Password",
+    "fullName": "Full Name",
+    "role": "Role",
+    "donor": "Donor",
+    "recipient": "Recipient/NGO",
+    "admin": "Admin",
+    "organizationName": "Organization Name",
+    "location": "Location",
+    "phone": "Phone Number",
+    "alreadyHaveAccount": "Already have an account?",
+    "dontHaveAccount": "Don't have an account?",
+    "forgotPassword": "Forgot password?"
+  },
+  "dashboard": {
+    "donor": {
+      "title": "Donor Dashboard",
+      "addFood": "Add Food Donation",
+      "myDonations": "My Donations",
+      "activeDonations": "Active Donations",
+      "pastDonations": "Past Donations"
+    },
+    "recipient": {
+      "title": "Recipient Dashboard", 
+      "browseFood": "Browse Available Food",
+      "myBookings": "My Bookings",
+      "nearbyFood": "Nearby Food"
+    },
+    "admin": {
+      "title": "Admin Dashboard",
+      "overview": "Overview",
+      "analytics": "Analytics",
+      "users": "Users",
+      "reports": "Reports"
+    }
+  },
+  "food": {
+    "name": "Food Name",
+    "description": "Description",
+    "quantity": "Quantity",
+    "category": "Category",
+    "expiryTime": "Expiry Time",
+    "pickupLocation": "Pickup Location",
+    "pickupSlots": "Available Pickup Slots",
+    "isUrgent": "Mark as Urgent",
+    "imageUpload": "Upload Image",
+    "categories": {
+      "veg": "Vegetarian",
+      "non_veg": "Non-Vegetarian", 
+      "dairy": "Dairy",
+      "bakery": "Bakery",
+      "packaged": "Packaged",
+      "cooked": "Cooked",
+      "other": "Other"
+    }
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel", 
+    "delete": "Delete",
+    "edit": "Edit",
+    "claim": "Claim",
+    "book": "Book",
+    "collect": "Mark as Collected",
+    "view": "View",
+    "filter": "Filter",
+    "search": "Search",
+    "clear": "Clear"
+  }
+}
