@@ -251,6 +251,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: "You've successfully signed in.",
       });
 
+      // Ensure a profile row exists/upserted for this user so admin lists show the user
+      try {
+        if (data?.user) {
+          const profilePayload = {
+            user_id: data.user.id,
+            full_name: data.user.email || '',
+            email: data.user.email || '',
+            role: 'user',
+            updated_at: new Date().toISOString(),
+          } as any;
+          // Use upsert so existing profiles are not duplicated
+          await supabase.from('profiles').upsert(profilePayload, { onConflict: 'user_id' });
+        }
+      } catch (e) {
+        console.debug('Failed to upsert profile after signIn', e);
+      }
+
       return { data };
     } catch (error) {
       console.error('Sign in error:', error);
@@ -497,6 +514,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           title: "Welcome to Abundant Share!",
           description: "Your account has been created successfully.",
         });
+      }
+
+      // Best-effort: upsert an email field into profiles so Admin UI can list emails reliably
+      // (Note: email column must exist in profiles table; apply migration 20251025_add_email_to_profiles.sql)
+      try {
+        // If the function path returned an explicit user, use it; otherwise, attempt to use current session
+        const userId = signInResult?.data?.user?.id || signInResult?.data?.session?.user?.id || undefined;
+        if (userId) {
+          await supabase.from('profiles').upsert({ user_id: userId, full_name: email, email } as any, { onConflict: 'user_id' });
+        }
+      } catch (e) {
+        console.debug('Failed to upsert email into profiles after signup', e);
       }
 
       return { data };

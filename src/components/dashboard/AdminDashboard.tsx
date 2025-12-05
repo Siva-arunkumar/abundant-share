@@ -121,29 +121,39 @@ const AdminDashboard: React.FC = () => {
       // Fall back to Supabase if /api/admin not available
       const viteUrl = import.meta.env.VITE_SUPABASE_URL;
       if (viteUrl) {
-        // fetch counts
-        const [{ data: usersData }, { data: listingsData }] = await Promise.all([
+        // fetch counts and recent items (profiles, listings, claims)
+        const [{ data: usersData }, { data: listingsData }, { data: claimsData }] = await Promise.all([
           supabase.from('profiles').select('*'),
-          supabase.from('food_listings').select('*'),
+          supabase.from('food_listings').select(`*, profiles:donor_id (full_name, organization_name, phone)`),
+          supabase.from('claims').select(`*, food_listings (title, pickup_location), profiles:claimed_by (full_name, phone)`),
         ] as any);
+
         const totalUsers = (usersData || []).length;
         const totalListings = (listingsData || []).length;
+        const totalClaims = (claimsData || []).length;
+
+        // Compute some derived stats
+        const activeListings = (listingsData || []).filter((l: any) => l.status === 'available').length;
+        const donorsSet = new Set((listingsData || []).map((l: any) => l.donor_id));
+
         setStats({
           totalUsers,
-          totalDonors: totalUsers,
-          totalRecipients: 0,
+          totalDonors: donorsSet.size,
+          totalRecipients: totalClaims > 0 ? totalClaims : 0,
           totalListings,
-          totalClaims: 0,
-          mealsServed: 0,
+          totalClaims,
+          mealsServed: totalClaims, // best-effort
           foodSavedKg: 0,
-          activeListings: (listingsData || []).filter((l:any)=> l.status === 'available').length,
-          expiredListings: 0,
-          completedTransactions: 0,
-          successRate: 0,
+          activeListings,
+          expiredListings: (listingsData || []).filter((l: any) => l.status === 'expired').length,
+          completedTransactions: (claimsData || []).filter((c: any) => c.status === 'collected' || c.status === 'completed').length,
+          successRate: totalListings > 0 ? Math.round(((claimsData || []).filter((c: any) => c.status === 'collected' || c.status === 'completed').length / totalListings) * 100) : 0,
         });
+
         setUsers((usersData || []) as any);
         setRecentListings((listingsData || []) as any);
-        setRecentClaims([]);
+        setRecentClaims((claimsData || []) as any);
+        setChartData([]);
         setLoading(false);
         return;
       }
@@ -554,10 +564,29 @@ const AdminDashboard: React.FC = () => {
                               toast({ title: 'Donation created', description: 'Donation added to local data.' });
                               fetchAdminData();
                             } else {
-                              const { error } = await supabase.from('food_listings').insert({ title: donationForm.title, description: donationForm.description, quantity: String(donationForm.quantity), donor_id: profile?.user_id || profile?.id } as any);
-                              if (error) throw error;
-                              toast({ title: 'Donation created', description: 'Donation added to database.' });
-                              fetchAdminData();
+                              try {
+                                // Try to create donation via an admin edge function (uses service role)
+                                const res = await supabase.functions.invoke('admin-create-donation', {
+                                  body: {
+                                    title: donationForm.title,
+                                    description: donationForm.description,
+                                    quantity: donationForm.quantity,
+                                    donor_id: profile?.user_id || profile?.id,
+                                  }
+                                });
+                                if (res.error || res.data?.error) {
+                                  throw res.error || new Error(res.data?.error || 'Function error');
+                                }
+                                toast({ title: 'Donation created', description: 'Donation added to database.' });
+                                fetchAdminData();
+                              } catch (e) {
+                                console.warn('admin-create-donation failed, falling back to direct insert:', e);
+                                // fallback attempt: direct insert (may fail due to RLS)
+                                const { error } = await supabase.from('food_listings').insert({ title: donationForm.title, description: donationForm.description, quantity: String(donationForm.quantity), donor_id: profile?.user_id || profile?.id } as any);
+                                if (error) throw error;
+                                toast({ title: 'Donation created', description: 'Donation added to database.' });
+                                fetchAdminData();
+                              }
                             }
                           } catch (e) { console.error(e); toast({ title: 'Failed', description: 'Could not create donation', variant: 'destructive' }); }
                         }}>Create</Button>
